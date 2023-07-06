@@ -35,32 +35,24 @@ namespace API.Controllers
             _cache = cache;
         }
 
-        [HttpGet("Login")]
-        public async Task<IActionResult> Login(string login, string password)
+        [HttpGet("")]
+        public async Task<IActionResult> Login()
         {
-            _logger.LogInformation($"Income request Login : {login} - {password}");
+            var headerToken = Request.Headers["ApiKey"];
+            _logger.LogInformation($"Income request Login : {headerToken}");
             try
             {
                 var users = _configuration.GetSection("ClientsCreditianals").Get<List<AppUser>>();
 
-                var user = users.FirstOrDefault(e => e.Login == login);
+                var user = users.FirstOrDefault(e => e.Token == headerToken);
                 if (user == null)
                 {
-                    _logger.LogWarning($"User Not Found : {login} - {password}");
-                    return BadRequest("Incorrect Login/Password pair");
+                    _logger.LogWarning($"User Not Found  token: {headerToken}");
+                    return Forbid();
                 }
 
-                if (CheckCreditionals(password, user))
-                {
-                    var token = await GetM4DToken();
-                    return Ok(new Answer(token));
-                }
-                else
-                {
-                    _logger.LogWarning($"PassHash doesn't equals for : {login} - {password}");
-                    return BadRequest("Incorrect Login/Password pair");
-                }
-
+                var token = await GetM4DToken();
+                return Ok(new Answer(token));
             }
             catch (Exception ex)
             {
@@ -73,28 +65,21 @@ namespace API.Controllers
         [HttpGet("RefreshToken")]
         public async Task<IActionResult> RefreshToken()
         {
-            var  token = await GetNewToken();
-            var cacheOptions = new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromHours(1));
-            _cache.Set(TOKEN_CACHE_NAME, token, cacheOptions);
-            return Ok();
+            try
+            { 
+                var  token = await GetNewToken();
+                var cacheOptions = new MemoryCacheEntryOptions().SetAbsoluteExpiration(TimeSpan.FromHours(1));
+                _cache.Set(TOKEN_CACHE_NAME, token, cacheOptions);
+                return Ok();
+            }
+            catch (Exception ex)
+            {
+                var errorGuid = Guid.NewGuid().ToString();
+                _logger.LogError($"Exception in RefreshToken #{errorGuid}: {ex.Message}\n{ex.StackTrace}");
+                return StatusCode(500, errorGuid);
+            }
         }
 
-        private bool CheckCreditionals(string password, AppUser user) 
-        {
-            var inputHash = GetAppHash(password, user.Salt);
-            var hashString = System.Convert.ToBase64String(inputHash);
-
-            return hashString.Equals(user.PassHash);
-        }
-
-        private byte[] GetAppHash(string input, string salt)
-        {
-            var inputBytes = Encoding.Default.GetBytes(input);
-            var saltBytes = Encoding.Default.GetBytes(salt);
-            var saltedValue = inputBytes.Concat(saltBytes).ToArray();
-
-            return SHA256.Create().ComputeHash(saltedValue);
-        }
 
         private async Task<string> GetM4DToken()
         {
@@ -182,6 +167,23 @@ namespace API.Controllers
 
             return client;
         }
+
+        //private bool CheckCreditionals(string password, AppUser user) 
+        //{
+        //    var inputHash = GetAppHash(password, user.Salt);
+        //    var hashString = System.Convert.ToBase64String(inputHash);
+
+        //    return hashString.Equals(user.PassHash);
+        //}
+
+        //private byte[] GetAppHash(string input, string salt)
+        //{
+        //    var inputBytes = Encoding.Default.GetBytes(input);
+        //    var saltBytes = Encoding.Default.GetBytes(salt);
+        //    var saltedValue = inputBytes.Concat(saltBytes).ToArray();
+
+        //    return SHA256.Create().ComputeHash(saltedValue);
+        //}
     }
 
 }
