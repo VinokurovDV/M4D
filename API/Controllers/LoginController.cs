@@ -19,7 +19,6 @@ using System.Text.Json.Serialization;
 namespace API.Controllers
 {
     [ApiController]
-    [Route("[controller]")]
     public class LoginController : ControllerBase
     {
         private readonly IConfiguration _configuration;
@@ -35,7 +34,7 @@ namespace API.Controllers
             _cache = cache;
         }
 
-        [HttpGet("")]
+        [HttpGet("api/login")]
         public async Task<IActionResult> Login()
         {
             var headerToken = Request.Headers["ApiKey"];
@@ -48,7 +47,7 @@ namespace API.Controllers
                 if (user == null)
                 {
                     _logger.LogWarning($"User Not Found  token: {headerToken}");
-                    return Forbid();
+                    return BadRequest("Incorrect api key");
                 }
 
                 var token = await GetM4DToken();
@@ -58,7 +57,7 @@ namespace API.Controllers
             {
                 var errorGuid = Guid.NewGuid().ToString();
                 _logger.LogError($"Exception in Login #{errorGuid}: {ex.Message}\n{ex.StackTrace}");
-                return StatusCode(500, errorGuid);
+                return StatusCode(500, $"{errorGuid} - {ex.Message}\n{ex.StackTrace}");
             }
         }
 
@@ -98,7 +97,7 @@ namespace API.Controllers
             var baseToken = await ExecuteM4DLoginCertRequest<GetAuthTokenResponse>("get");
 
             var sign = await GetSign(baseToken.base64Token);
-
+            _logger.LogWarning($"Sign = {sign}");
             var jwt = await ExecuteM4DLoginCertRequest<GetJwtResult>("post", baseToken.base64Token, sign);
             return jwt.token;
         }
@@ -106,15 +105,14 @@ namespace API.Controllers
         private async Task<string> GetSign(string base64Token)
         {
             var encodedToken = Encoding.Default.GetString(Convert.FromBase64String(base64Token));
-            string Thumbprint;
+            _logger.LogWarning($"Encodod token = {encodedToken}");
 
             var cms = new SignedCms(new ContentInfo(Encoding.Default.GetBytes(encodedToken)), true);
 
             var _store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
             _store.Open(OpenFlags.ReadOnly);
 
-
-            Thumbprint = _configuration.GetValue<string>("CertThumbprint");
+            var Thumbprint = _configuration.GetValue<string>("CertThumbprint");
             var _cert = _store.Certificates.Find(X509FindType.FindByThumbprint, Thumbprint, false);
 
             if (_cert.Count == 0)
@@ -125,9 +123,7 @@ namespace API.Controllers
             cms.ComputeSignature(a);
 
             var _licenseText = cms.Encode();
-            return (Convert.ToBase64String(_licenseText));
-            
-            throw new Exception("Тело сертификат для роли \"edoSign\" не предоставлено.");
+            return (Convert.ToBase64String(_licenseText));   
         }
 
         private async Task<T> ExecuteM4DLoginCertRequest<T>(string method, string token = "", string sign = "")
@@ -151,6 +147,7 @@ namespace API.Controllers
             }
 
             var body = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning($"It com response on {method}: status {response.StatusCode}, {body}");
             if (response.IsSuccessStatusCode)
             {
                 var result = JsonConvert.DeserializeObject<T>(body);
@@ -167,23 +164,6 @@ namespace API.Controllers
 
             return client;
         }
-
-        //private bool CheckCreditionals(string password, AppUser user) 
-        //{
-        //    var inputHash = GetAppHash(password, user.Salt);
-        //    var hashString = System.Convert.ToBase64String(inputHash);
-
-        //    return hashString.Equals(user.PassHash);
-        //}
-
-        //private byte[] GetAppHash(string input, string salt)
-        //{
-        //    var inputBytes = Encoding.Default.GetBytes(input);
-        //    var saltBytes = Encoding.Default.GetBytes(salt);
-        //    var saltedValue = inputBytes.Concat(saltBytes).ToArray();
-
-        //    return SHA256.Create().ComputeHash(saltedValue);
-        //}
     }
 
 }
