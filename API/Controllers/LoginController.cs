@@ -109,7 +109,7 @@ namespace API.Controllers
 
             var cms = new SignedCms(new ContentInfo(Encoding.Default.GetBytes(encodedToken)), true);
 
-            var _store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
+            var _store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
             _store.Open(OpenFlags.ReadOnly);
 
             var Thumbprint = _configuration.GetValue<string>("CertThumbprint");
